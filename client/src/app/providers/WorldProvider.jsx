@@ -10,7 +10,12 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH,
 } from "../../utils/constants";
-import { clamp } from "../../utils/math";
+import { clamp, getDistance } from "../../utils/math";
+
+const SELF_RECONCILE_GRACE_MS = 220;
+const SELF_SMOOTHING_FACTOR = 0.35;
+const SELF_SNAP_DISTANCE = 180;
+const SELF_SETTLE_DISTANCE = 2;
 
 /**
  * Generates deterministic guest identity for the current browser tab.
@@ -61,6 +66,49 @@ function worldReducer(state, action) {
       for (const user of action.payload.users) {
         nextUsersById[user.userId] = user;
       }
+
+      const selfUserId = state.session.userId;
+      const localSelf = state.usersById[selfUserId];
+      const serverSelf = nextUsersById[selfUserId];
+
+      if (localSelf && !serverSelf) {
+        nextUsersById[selfUserId] = localSelf;
+      }
+
+      if (localSelf && serverSelf) {
+        if (action.payload.preserveSelfPosition) {
+          nextUsersById[selfUserId] = {
+            ...serverSelf,
+            position: localSelf.position,
+          };
+        } else {
+          const correctionDistance = getDistance(
+            localSelf.position,
+            serverSelf.position,
+          );
+
+          // Smooth small-to-medium corrections to avoid visible snapping on high latency.
+          if (
+            correctionDistance > SELF_SETTLE_DISTANCE &&
+            correctionDistance < SELF_SNAP_DISTANCE
+          ) {
+            nextUsersById[selfUserId] = {
+              ...serverSelf,
+              position: {
+                x:
+                  localSelf.position.x +
+                  (serverSelf.position.x - localSelf.position.x) *
+                    SELF_SMOOTHING_FACTOR,
+                y:
+                  localSelf.position.y +
+                  (serverSelf.position.y - localSelf.position.y) *
+                    SELF_SMOOTHING_FACTOR,
+              },
+            };
+          }
+        }
+      }
+
       return {
         ...state,
         usersById: nextUsersById,
@@ -168,6 +216,7 @@ export function WorldProvider({ children }) {
   });
 
   const usersByIdRef = useRef(state.usersById);
+  const lastLocalMovementAtRef = useRef(0);
   useEffect(() => {
     usersByIdRef.current = state.usersById;
   }, [state.usersById]);
@@ -186,10 +235,26 @@ export function WorldProvider({ children }) {
     });
   }, [initialPosition, isConnected, socket, state.session]);
 
-  const onUsersUpdate = useCallback((payload) => {
-    const users = Array.isArray(payload?.users) ? payload.users : [];
-    dispatch({ type: "SET_USERS", payload: { users } });
-  }, []);
+  const onUsersUpdate = useCallback(
+    (payload) => {
+      const users = Array.isArray(payload?.users) ? payload.users : [];
+
+      const direction = directionRef.current;
+      const isActivelyMoving = Math.hypot(direction.x, direction.y) > 0;
+      const isWithinGraceWindow =
+        performance.now() - lastLocalMovementAtRef.current <
+        SELF_RECONCILE_GRACE_MS;
+
+      dispatch({
+        type: "SET_USERS",
+        payload: {
+          users,
+          preserveSelfPosition: isActivelyMoving || isWithinGraceWindow,
+        },
+      });
+    },
+    [directionRef],
+  );
 
   const onProximityConnect = useCallback((payload) => {
     dispatch({
@@ -263,6 +328,7 @@ export function WorldProvider({ children }) {
       const magnitude = Math.hypot(direction.x, direction.y);
 
       if (magnitude > 0) {
+        lastLocalMovementAtRef.current = now;
         const normalizedX = direction.x / magnitude;
         const normalizedY = direction.y / magnitude;
 
