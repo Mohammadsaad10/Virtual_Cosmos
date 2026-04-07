@@ -26,6 +26,7 @@ This implementation targets the required capabilities:
 - Smooth rendering at 60 FPS on modern browsers.
 - Network update rate around 10 to 20 updates per second per client.
 - Deterministic proximity behavior with minimal connect/disconnect flicker.
+- Reduced perceived rubber-banding under moderate/high latency through client-side reconciliation safeguards.
 - Clean, modular codebase suitable for demo and future extension.
 
 ---
@@ -172,7 +173,30 @@ virtual_cosmos/
 
 - The server is authoritative for room validity and proximity state.
 - Clients should ignore stale position updates using seq and/or ts ordering.
+- Client preserves local self-position during active movement and a short grace window, then smoothly reconciles to server snapshots.
 - Message send should be rejected server-side if sender is no longer in room.
+
+### Client-Side Prediction and Reconciliation (Implemented)
+
+Current movement strategy in the client is designed to reduce rubber-banding while keeping server authority:
+
+1. Apply immediate local prediction each animation frame from keyboard direction.
+2. Emit movement updates at a fixed throttle interval to avoid packet spam.
+3. On `users_update`, preserve local self-position while movement is active and for a short grace window.
+4. After grace window, reconcile toward server position with smoothing for small and medium deltas.
+5. Snap to server for large divergence to guarantee consistency.
+6. Cap animation frame delta to prevent oversized local jumps after tab throttling/stalls.
+
+Current tuning values:
+
+| Parameter | Value | Purpose |
+| --- | --- | --- |
+| SELF_RECONCILE_GRACE_MS | 650ms | Prevent immediate snap-back right after input changes |
+| SELF_SMOOTHING_FACTOR | 0.25 | Blend factor for server correction |
+| SELF_SNAP_DISTANCE | 180 units | Large error threshold to force hard correction |
+| SELF_SETTLE_DISTANCE | 2 units | Ignore micro-corrections to reduce jitter |
+| MAX_FRAME_DELTA_SECONDS | 0.05s | Clamp long frames to avoid jump-then-snap artifacts |
+| MOVEMENT_EMIT_INTERVAL_MS | 66ms | Network send cadence for move events |
 
 ---
 
@@ -393,6 +417,7 @@ Current implementation note:
 | ------------------------------------------------------------------ | -------------------------- | ------------------------------------------------------------------------- |
 | Frequent move events can overload server at scale                  | High CPU and network usage | Throttle client emits (for example 15 to 20 Hz), send only when changed   |
 | Position jitter causes connect/disconnect flicker near radius edge | Poor UX and noisy events   | Optional hysteresis buffer or short debounce window                       |
+| High network latency causes movement rubber-banding                | Poor movement feel         | Implemented client-side prediction, reconciliation grace window, smoothing, and frame-delta cap |
 | Client-side cheating by sending impossible positions               | Invalid proximity outcomes | Server-side speed clamp and bounds validation                             |
 | O(n^2) global distance checks with many users                      | Scalability limits         | Start with O(n) per mover; later use spatial partitioning (grid/quadtree) |
 | Message delivery to stale rooms                                    | Incorrect chat behavior    | Validate membership before broadcasting                                   |

@@ -5,6 +5,7 @@ A real-time multiplayer 2D virtual world where users move on a shared canvas and
 ## Highlights
 
 - Real-time multiplayer movement using Socket.IO.
+- Client-side prediction with latency-aware reconciliation for smoother movement on high ping.
 - PixiJS-rendered 2D world with live avatar updates.
 - Proximity-based auto connect and disconnect logic.
 - Conditional direct-message chat enabled only for active proximity rooms.
@@ -24,6 +25,11 @@ virtual_cosmos/
   server/   # Express + Socket.IO backend
   planning.md
 ```
+
+Build output note:
+
+- `client/dist` is a generated artifact and is intentionally not committed.
+- Render Static Site builds it during deployment.
 
 ## Local Setup
 
@@ -104,6 +110,27 @@ Server:
 - Proximity connect/disconnect: Implemented on server with edge diffing.
 - Chat only when connected: Implemented with server room validation and conditional chat UI.
 - Active nearby count in UI: Implemented in header and nearby list.
+
+## Movement Sync Strategy
+
+To keep movement responsive under real-world latency, the client uses prediction plus controlled server reconciliation.
+
+1. Local prediction:
+- Movement is applied immediately on the client each animation frame for instant response.
+
+2. Throttled network updates:
+- Client emits `move` events at a controlled interval (about 66ms) with sequence metadata.
+
+3. Reconciliation policy:
+- While movement input is active (and for a short grace window), local self-position is preserved to avoid visible snap-back.
+- Once input settles, server-authoritative position is blended in smoothly for small and medium corrections.
+- Very large divergences are allowed to snap to server state to maintain authority and consistency.
+
+4. Jitter guard for tab stalls:
+- Frame delta is capped so temporary frame drops (common in private/incognito tabs) do not cause large local jumps followed by harsh corrections.
+
+Result:
+- Better perceived smoothness with server-authoritative correctness maintained.
 
 
 ## Manual Verification Flow
