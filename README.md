@@ -98,7 +98,7 @@ Server:
 - npm run dev
 - npm run start
 
-## Assignment Objective Coverage
+## Objective Coverage
 
 - 2D world rendering: Implemented with PixiJS.
 - Multiplayer visibility: Implemented via users_update snapshots.
@@ -107,7 +107,6 @@ Server:
 - Chat only when connected: Implemented with server room validation and conditional chat UI.
 - Active nearby count in UI: Implemented in header and nearby list.
 
-See detailed mapping in project-understanding-and-verification.md.
 
 ## Manual Verification Flow
 
