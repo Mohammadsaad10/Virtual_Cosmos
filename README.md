@@ -2,8 +2,6 @@
 
 A real-time multiplayer 2D virtual world where users move on a shared canvas and can chat only when they are physically close.
 
-This repository is prepared for assignment submission and GitHub review.
-
 ## Highlights
 
 - Real-time multiplayer movement using Socket.IO.
