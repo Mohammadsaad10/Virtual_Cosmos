@@ -12,10 +12,11 @@ import {
 } from "../../utils/constants";
 import { clamp, getDistance } from "../../utils/math";
 
-const SELF_RECONCILE_GRACE_MS = 220;
-const SELF_SMOOTHING_FACTOR = 0.35;
+const SELF_RECONCILE_GRACE_MS = 650;
+const SELF_SMOOTHING_FACTOR = 0.25;
 const SELF_SNAP_DISTANCE = 180;
 const SELF_SETTLE_DISTANCE = 2;
+const MAX_FRAME_DELTA_SECONDS = 0.05;
 
 /**
  * Generates deterministic guest identity for the current browser tab.
@@ -321,7 +322,10 @@ export function WorldProvider({ children }) {
      * @param {number} now - Animation frame timestamp.
      */
     const step = (now) => {
-      const deltaSeconds = (now - previousAt) / 1000;
+      const deltaSeconds = Math.min(
+        (now - previousAt) / 1000,
+        MAX_FRAME_DELTA_SECONDS,
+      );
       previousAt = now;
 
       const direction = directionRef.current;
